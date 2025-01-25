@@ -9,7 +9,7 @@ edition = "2021"
 log = "0.4"
 winit = { version = "0.28", features = ["android-game-activity"]}
 wgpu = "0.16.0"
-pollster = "0.2"
+tokio = {version="1.43.0", features=["rt-multi-thread"]}
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 env_logger = "0.10"
@@ -18,8 +18,6 @@ env_logger = "0.10"
 android_logger = "0.13.1"
 
 [features]
-default = []
-desktop = []
 
 [lib]
 crate-type=["cdylib"]
@@ -27,12 +25,3 @@ crate-type=["cdylib"]
 [[bin]]
 name="globalapp"
 path="src/lib.rs"
-
-##  [package.metadata.android]
-##  package = "org.ggezandroid.example"
-##  apk_name = "ggezandroid"
-##  strip = "strip"
-##  build_targets = ["aarch64-linux-android"]
-
-##  [package.metadata.android.sdk]
-##  target_sdk_version = 33

@@ -2,8 +2,9 @@ use std::borrow::Cow;
 
 use log::trace;
 
-use wgpu::TextureFormat;
-use wgpu::{Adapter, Device, Instance, PipelineLayout, Queue, RenderPipeline, ShaderModule};
+use wgpu::*;
+
+use tokio::runtime::Runtime;
 
 use winit::platform::run_return::EventLoopExtRunReturn;
 use winit::{
@@ -29,6 +30,7 @@ struct SurfaceState {
 }
 
 struct App {
+    runtime: Runtime,
     instance: Instance,
     adapter: Option<Adapter>,
     surface_state: Option<SurfaceState>,
@@ -36,9 +38,13 @@ struct App {
 }
 
 impl App {
-    fn new(instance: Instance) -> Self {
+    fn new() -> Self {
         Self {
-            instance,
+            runtime: Runtime::new().unwrap(),
+            instance: Instance::new(wgpu::InstanceDescriptor {
+                backends: wgpu::Backends::all(),
+                ..Default::default()
+            }),
             adapter: None,
             surface_state: None,
             render_state: None,
@@ -130,19 +136,18 @@ impl App {
     // After we've initialized our render state once though we
     // expect all future surfaces will have the same format and we
     // so this stat will remain valid.
-    async fn ensure_render_state_for_surface(&mut self) {
+    fn ensure_render_state_for_surface(&mut self) {
         if let Some(surface_state) = &self.surface_state {
             if self.adapter.is_none() {
                 log::info!("WGPU: requesting a suitable adapter (compatible with our surface)");
-                let adapter = self
+                let adapter = self.runtime.block_on(self
                     .instance
                     .request_adapter(&wgpu::RequestAdapterOptions {
                         power_preference: wgpu::PowerPreference::default(),
                         force_fallback_adapter: false,
                         // Request an adapter which can render to our surface
                         compatible_surface: Some(&surface_state.surface),
-                    })
-                    .await
+                    }))
                     .expect("Failed to find an appropriate adapter");
 
                 self.adapter = Some(adapter);
@@ -153,7 +158,7 @@ impl App {
                 log::info!("WGPU: finding supported swapchain format");
                 let surface_caps = surface_state.surface.get_capabilities(adapter);
                 let swapchain_format = surface_caps.formats[0];
-                let rs = Self::init_render_state(adapter, swapchain_format).await;
+                let rs = self.runtime.block_on(Self::init_render_state(adapter, swapchain_format));
                 self.render_state = Some(rs);
             }
         }
@@ -193,7 +198,7 @@ impl App {
     fn resume<T>(&mut self, event_loop: &EventLoopWindowTarget<T>) {
         log::info!("Resumed, creating render state...");
         self.create_surface(event_loop);
-        pollster::block_on(self.ensure_render_state_for_surface());
+        self.ensure_render_state_for_surface();
         self.configure_surface_swapchain();
         self.queue_redraw();
     }
@@ -202,15 +207,7 @@ impl App {
 fn run(mut event_loop: EventLoop<()>) {
     log::info!("Running mainloop...");
 
-    // doesn't need to be re-considered later
-    let instance = Instance::new(wgpu::InstanceDescriptor {
-        backends: wgpu::Backends::all(),
-        //backends: wgpu::Backends::VULKAN,
-        //backends: wgpu::Backends::GL,
-        ..Default::default()
-    });
-
-    let mut app = App::new(instance);
+    let mut app = App::new();
 
     // It's not recommended to use `run` on Android because it will call
     // `std::process::exit` when finished which will short-circuit any
@@ -261,7 +258,7 @@ fn run(mut event_loop: EventLoop<()>) {
                                         view: &view,
                                         resolve_target: None,
                                         ops: wgpu::Operations {
-                                            load: wgpu::LoadOp::Clear(wgpu::Color::GREEN),
+                                            load: wgpu::LoadOp::Clear(wgpu::Color::BLUE),
                                             store: true,
                                         },
                                     })],
